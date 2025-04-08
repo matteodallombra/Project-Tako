@@ -17,12 +17,10 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-#replace XXXX with the actual IP address of your board
-
   manual_ip:
-    static_ip: XXX.XXX.X.XX
-    gateway: XXX.XXX.X.XX
-    subnet: XXX.XXX.X.XX
+    static_ip: 192.168.1.83
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
 
   ap:
     ssid: "tft-device-fallback"
@@ -79,6 +77,9 @@ text_sensor:
   - platform: homeassistant
     id: tv_bedroom_media
     entity_id: media_player.master_tv_3
+  - platform: homeassistant
+    id: house_temp
+    entity_id: sensor.average_house_temperature
 
 number:
   - platform: homeassistant
@@ -103,6 +104,9 @@ font:
   - file: "OpenSans-Regular.ttf"
     id: font2
     size: 12
+  - file: "OpenSans-Regular.ttf"
+    id: font3
+    size: 8
 
 display:
   - platform: st7735
@@ -133,6 +137,15 @@ display:
         }
 
         it.printf(64, 0, id(font2), TextAlign::TOP_CENTER, "%s", title.c_str());
+
+        // --- Added Temperature Display ---
+        std::string temp = id(house_temp).state;
+        if (!temp.empty()) {
+          std::string temp_text = temp + "\u00B0C";
+          it.printf(126, 0, id(font3), TextAlign::TOP_RIGHT, "%s", temp_text.c_str());
+        }
+        // ----------------------------------
+
         it.line(0, 16, 128, 16, Color::WHITE);
 
         const int max_chars_per_line = 20;
@@ -164,9 +177,18 @@ display:
       int index = id(selected_index);
 
       it.printf(64, 0, id(font2), TextAlign::TOP_CENTER, "%s", room_names[page].c_str());
+
+      // --- Added Temperature Display ---
+      std::string temp = id(house_temp).state;
+      if (!temp.empty()) {
+        std::string temp_text = temp + "\u00B0C";
+        it.printf(126, 0, id(font3), TextAlign::TOP_RIGHT, "%s", temp_text.c_str());
+      }
+      // ----------------------------------
+
       it.line(0, 16, 128, 16, Color::WHITE);
 
-      if (page == 0) {
+        if (page == 0) {
         const int icon_w = 48;
         const int icon_h = 48;
         const int screen_w = 128;
