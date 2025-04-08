@@ -1,4 +1,7 @@
 # Project-Tako
+
+![image](https://i0.wp.com/matteodallombra.net/wp-content/uploads/2025/03/Tako-Banner-1.png)
+
 Home Assistant whole house remote
 
 My custom remote controller to achieve whole house control.
