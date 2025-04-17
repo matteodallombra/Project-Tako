@@ -17,3 +17,5 @@ Main goals:
 This repository is built to more easily host the full ESPHome code that runs on the ESP32 Board
 
 All updates posted here: https://matteodallombra.net/category/tako/
+
+**UPDATE 17/04/2025**: I've created a list of the main hardware used in the project here: https://github.com/matteodallombra/Project-Tako/blob/main/hardware-list.md
