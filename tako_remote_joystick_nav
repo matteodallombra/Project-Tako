@@ -1,0 +1,456 @@
+esphome:
+  name: tft-device-display
+  friendly_name: TFT Device Display
+
+esp32:
+  board: esp32dev
+
+logger:
+
+api:
+  id: api_client
+
+ota:
+  platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  manual_ip:
+    static_ip: xxxxxxxxxxxxxx
+    gateway: xxxxxxxxxxxx
+    subnet: xxxxxxxxxxxxx
+
+  ap:
+    ssid: "tft-device-fallback"
+    password: "fallback_pass"
+
+captive_portal:
+
+globals:
+  - id: selected_index
+    type: int
+    initial_value: '0'
+  - id: current_page
+    type: int
+    initial_value: '0'
+  - id: tv_mode
+    type: int
+    initial_value: '0'
+  - id: last_x_time
+    type: unsigned long
+    initial_value: '0'
+  - id: last_y_time
+    type: unsigned long
+    initial_value: '0'
+  - id: last_joystick_x_dir
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: last_joystick_y_dir
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+image:
+  - file: "tako-icons/mug.png"
+    id: icon_coffee
+    type: RGB
+  - file: "tako-icons/moon.png"
+    id: icon_night
+    type: RGB
+  - file: "tako-icons/closed_garage.png"
+    id: icon_garage_closed
+    type: RGB
+  - file: "tako-icons/open_garage.png"
+    id: icon_garage_open
+    type: RGB
+  - file: "tako-icons/start_radio.png"
+    id: icon_music
+    type: RGB
+  - file: "tako-icons/stop_radio.png"
+    id: icon_mute
+    type: RGB
+  - file: "tako-icons/home.png"
+    id: icon_dashboard
+    type: RGB
+  - file: "tako-icons/fridge.png"
+    id: icon_kitchen
+    type: RGB
+  - file: "tako-icons/sofa.png"
+    id: icon_living
+    type: RGB
+  - file: "tako-icons/office.png"
+    id: icon_office
+    type: RGB
+
+text_sensor:
+  - platform: homeassistant
+    id: garage_door
+    entity_id: cover.smart_garage_door_2210190300736461070148e1e9abbf0e_garage
+  - platform: homeassistant
+    id: tv_kitchen_media
+    entity_id: media_player.kitchen_apple_tv
+  - platform: homeassistant
+    id: tv_living_media
+    entity_id: media_player.living_room_apple_tv
+  - platform: homeassistant
+    id: tv_bedroom_media
+    entity_id: media_player.master_tv_3
+  - platform: homeassistant
+    id: house_temp
+    entity_id: sensor.average_house_temperature
+
+number:
+  - platform: homeassistant
+    id: music_check
+    entity_id: input_number.music_check
+
+font:
+  - file: "OpenSans-Regular.ttf"
+    id: font1
+    size: 16
+  - file: "OpenSans-Regular.ttf"
+    id: font2
+    size: 12
+  - file: "OpenSans-Regular.ttf"
+    id: font3
+    size: 8
+
+display:
+  - platform: st7735
+    id: tft_display
+    model: "INITR_BLACKTAB"
+    device_width: 128
+    device_height: 160
+    col_start: 0
+    row_start: 0
+    update_interval: 500ms
+    cs_pin: GPIO15
+    dc_pin: GPIO22
+    reset_pin: GPIO4
+    rotation: 0
+    lambda: |-
+      if (id(tv_mode) > 0) {
+        std::string title;
+        std::string media;
+        if (id(tv_mode) == 1) {
+          title = "Kitchen TV";
+          media = id(tv_kitchen_media).state;
+        } else if (id(tv_mode) == 2) {
+          title = "Living TV";
+          media = id(tv_living_media).state;
+        } else {
+          title = "Bedroom TV";
+          media = id(tv_bedroom_media).state;
+        }
+
+        it.printf(64, 0, id(font2), TextAlign::TOP_CENTER, "%s", title.c_str());
+
+        std::string temp = id(house_temp).state;
+        if (!temp.empty()) {
+          std::string temp_text = temp + "°C";
+          it.printf(126, 0, id(font3), TextAlign::TOP_RIGHT, "%s", temp_text.c_str());
+        }
+
+        it.line(0, 16, 128, 16, Color::WHITE);
+
+        const int max_chars_per_line = 20;
+        for (int i = 0; i < 3; i++) {
+          int start = i * max_chars_per_line;
+          if (start < media.length()) {
+            std::string line = media.substr(start, max_chars_per_line);
+            it.printf(4, 30 + i * 18, id(font2), Color::WHITE, TextAlign::TOP_LEFT, "%s", line.c_str());
+          }
+        }
+        return;
+      }
+
+      const int total_pages = 4;
+      const std::string room_names[total_pages] = {"Wisteria", "Kitchen", "Living Room", "Office"};
+
+      struct Device {
+        std::string name;
+        std::string entity_id;
+      };
+
+      std::vector<Device> pages[total_pages - 1] = {
+        { {"Couch Light", "light.kitchen_light_switch_switch"}, {"Spotlights", "light.kitchen_light_switch_switch_2"} },
+        { {"Ceiling Lights", "switch.living_room_light_switch"} },
+        { {"Ceiling Lights", "switch.magic_switch_s1e_52d3_switch_1"} }
+      };
+
+      int page = id(current_page) % total_pages;
+      int index = id(selected_index);
+
+      it.printf(64, 0, id(font2), TextAlign::TOP_CENTER, "%s", room_names[page].c_str());
+
+      std::string temp = id(house_temp).state;
+      if (!temp.empty()) {
+        std::string temp_text = temp + "°C";
+        it.printf(126, 0, id(font3), TextAlign::TOP_RIGHT, "%s", temp_text.c_str());
+      }
+
+      it.line(0, 16, 128, 16, Color::WHITE);
+
+      if (page == 0) {
+        const int icon_w = 48;
+        const int icon_h = 48;
+        const int screen_w = 128;
+        const int screen_h = 160;
+        const int title_h = 16;
+        const int nav_h = 20;
+        const int usable_h = screen_h - title_h - nav_h;
+        const int spacing_x = (screen_w - (2 * icon_w)) / 3;
+        const int spacing_y = (usable_h - (2 * icon_h)) / 3;
+        const int base_x = spacing_x;
+        const int base_y = title_h + spacing_y;
+
+        for (int i = 0; i < 4; i++) {
+          int row = i / 2;
+          int col = i % 2;
+          int x = base_x + col * (icon_w + spacing_x);
+          int y = base_y + row * (icon_h + spacing_y);
+
+          if (i == 0) it.image(x, y, id(icon_coffee));
+          else if (i == 1) it.image(x, y, id(icon_night));
+          else if (i == 2) {
+            bool garage_open = id(garage_door).state != "closed";
+            it.image(x, y, garage_open ? id(icon_garage_open) : id(icon_garage_closed));
+          } else if (i == 3) {
+            bool muted = (id(music_check).state == 1);
+            it.image(x, y, muted ? id(icon_mute) : id(icon_music));
+          }
+
+          if (i == (index % 4)) {
+            it.rectangle(x - 2, y - 2, icon_w + 4, icon_h + 4, Color::WHITE);
+          }
+        }
+      } else {
+        const auto& devices = pages[page - 1];
+        int selected = index % devices.size();
+        const int item_height = 36;
+        const int left_padding = 4;
+        const int top_padding = 6;
+        const int max_chars_per_line = 18;
+
+        auto split_name = [](const std::string &text, int max_len) -> std::pair<std::string, std::string> {
+          if (text.length() <= max_len) return {text, ""};
+          size_t split_pos = text.rfind(' ', max_len);
+          if (split_pos == std::string::npos) split_pos = max_len;
+          std::string first = text.substr(0, split_pos);
+          std::string second = text.substr(split_pos);
+          if (second[0] == ' ') second = second.substr(1);
+          return {first, second};
+        };
+
+        for (int i = 0; i < devices.size(); i++) {
+          int y = 20 + i * item_height;
+          bool sel = (i == selected);
+          auto pair = split_name(devices[i].name, max_chars_per_line);
+
+          if (sel) {
+            it.filled_rectangle(0, y, 128, item_height, Color::WHITE);
+            it.printf(left_padding, y + top_padding, id(font2), Color::BLACK, TextAlign::TOP_LEFT, "> %s", pair.first.c_str());
+            if (!pair.second.empty())
+              it.printf(left_padding + 12, y + top_padding + 14, id(font2), Color::BLACK, TextAlign::TOP_LEFT, "%s", pair.second.c_str());
+          } else {
+            it.printf(left_padding, y + top_padding, id(font2), Color::WHITE, TextAlign::TOP_LEFT, "  %s", pair.first.c_str());
+            if (!pair.second.empty())
+              it.printf(left_padding + 12, y + top_padding + 14, id(font2), Color::WHITE, TextAlign::TOP_LEFT, "%s", pair.second.c_str());
+          }
+        }
+      }
+
+      const int icon_size = 16;
+      const int icon_spacing = 12;
+      const int nav_total = 4;
+      const int total_width = nav_total * icon_size + (nav_total - 1) * icon_spacing;
+      const int icon_y = 140;
+      const int icon_x_start = (128 - total_width) / 2;
+
+      for (int i = 0; i < nav_total; i++) {
+        int x = icon_x_start + i * (icon_size + icon_spacing);
+        switch(i) {
+          case 0: it.image(x, icon_y, id(icon_dashboard)); break;
+          case 1: it.image(x, icon_y, id(icon_kitchen)); break;
+          case 2: it.image(x, icon_y, id(icon_living)); break;
+          case 3: it.image(x, icon_y, id(icon_office)); break;
+        }
+        if (i == id(current_page) && id(tv_mode) == 0) {
+          it.line(x, icon_y + icon_size + 2, x + icon_size, icon_y + icon_size + 2, Color::WHITE);
+        }
+      }
+sensor:
+  - platform: adc
+    pin: GPIO35
+    id: joystick_x
+    name: "Joystick X"
+    attenuation: 12db
+    update_interval: 100ms
+    filters:
+      - calibrate_linear:
+          - 0.0 -> 0.0
+          - 3.3 -> 1.0
+    unit_of_measurement: "ratio"
+    accuracy_decimals: 3
+
+  - platform: adc
+    pin: GPIO34
+    id: joystick_y
+    name: "Joystick Y"
+    attenuation: 12db
+    update_interval: 100ms
+    filters:
+      - calibrate_linear:
+          - 0.0 -> 0.0
+          - 3.3 -> 1.0
+    unit_of_measurement: "ratio"
+    accuracy_decimals: 3
+
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO25
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "TV Mode Toggle"
+    on_press:
+      then:
+        - lambda: |-
+            id(tv_mode) = (id(tv_mode) + 1) % 4;
+
+  - platform: gpio
+    pin:
+      number: GPIO21
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Joystick Button"
+    on_press:
+      then:
+        - lambda: |-
+            if (id(tv_mode) == 0) {
+              if (id(current_page) == 0) {
+                std::string service_name;
+                std::string entity_id;
+
+                switch (id(selected_index) % 4) {
+                  case 0:
+                    service_name = "script.turn_on";
+                    entity_id = "script.good_morning";
+                    break;
+                  case 1:
+                    service_name = "script.turn_on";
+                    entity_id = "script.good_night";
+                    break;
+                  case 2:
+                    service_name = "cover.toggle";
+                    entity_id = "cover.smart_garage_door_2210190300736461070148e1e9abbf0e_garage";
+                    break;
+                  case 3:
+                    if (id(music_check).state == 1) {
+                      service_name = "script.turn_on";
+                      entity_id = "script.stop_sonos_radio";
+                    } else {
+                      service_name = "script.turn_on";
+                      entity_id = "script.matteo_radio_sonos_whole_house";
+                    }
+                    break;
+                }
+
+                esphome::api::HomeassistantServiceResponse svc;
+                svc.service = service_name;
+                esphome::api::HomeassistantServiceMap entry;
+                entry.key = "entity_id";
+                entry.value = entity_id;
+                svc.data.push_back(entry);
+                id(api_client).send_homeassistant_service_call(svc);
+              } else {
+                std::vector<std::vector<std::string>> ids = {
+                  {"light.kitchen_light_switch_switch", "light.kitchen_light_switch_switch_2"},
+                  {"switch.living_room_light_switch"},
+                  {"switch.magic_switch_s1e_52d3_switch_1"}
+                };
+                int page = id(current_page) - 1;
+                std::string entity_id = ids[page][id(selected_index) % ids[page].size()];
+
+                esphome::api::HomeassistantServiceResponse svc;
+                svc.service = "homeassistant.toggle";
+                esphome::api::HomeassistantServiceMap entry;
+                entry.key = "entity_id";
+                entry.value = entity_id;
+                svc.data.push_back(entry);
+                id(api_client).send_homeassistant_service_call(svc);
+              }
+            } else {
+              std::string entity = id(tv_mode) == 1 ? "media_player.kitchen_apple_tv" :
+                                   id(tv_mode) == 2 ? "media_player.living_room_apple_tv" :
+                                                      "media_player.master_tv_3";
+
+              esphome::api::HomeassistantServiceResponse svc;
+              svc.service = "media_player.media_play_pause";
+              esphome::api::HomeassistantServiceMap entry;
+              entry.key = "entity_id";
+              entry.value = entity;
+              svc.data.push_back(entry);
+              id(api_client).send_homeassistant_service_call(svc);
+            }
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          const unsigned long cooldown = 200;
+          const float low_trigger = 0.3;
+          const float high_trigger = 0.7;
+
+          float x = id(joystick_x).state;
+          float y = id(joystick_y).state;
+
+          int dir_x = 0;
+          if (x < low_trigger) dir_x = 1;
+          else if (x > high_trigger) dir_x = 2;
+
+          if (dir_x != 0 && millis() - id(last_x_time) > cooldown) {
+            id(last_x_time) = millis();
+            ESP_LOGD("joystick", "Detected dir_x: %d", dir_x);
+
+            if (id(current_page) == 0) {
+              if (dir_x == 1 && (id(selected_index) % 2) == 1) {
+                id(selected_index) -= 1;
+              } else if (dir_x == 2 && (id(selected_index) % 2) == 0) {
+                id(selected_index) += 1;
+              } else {
+                id(current_page) = (id(current_page) + (dir_x == 1 ? 3 : 1)) % 4;
+                id(selected_index) = 0;
+              }
+            } else {
+              id(current_page) = (id(current_page) + (dir_x == 1 ? 3 : 1)) % 4;
+              id(selected_index) = 0;
+            }
+          }
+
+          int dir_y = 0;
+          if (y < low_trigger) dir_y = 1;
+          else if (y > high_trigger) dir_y = 2;
+
+          if (dir_y != 0 && millis() - id(last_y_time) > cooldown) {
+            id(last_y_time) = millis();
+            ESP_LOGD("joystick", "Detected dir_y: %d", dir_y);
+
+            if (id(current_page) == 0) {
+              id(selected_index) = (id(selected_index) + 2) % 4;
+            } else {
+              std::vector<int> sizes = {2, 1, 1};
+              int max_index = sizes[id(current_page) - 1] - 1;
+              id(selected_index) = (dir_y == 1)
+                ? (id(selected_index) + max_index) % (max_index + 1)
+                : (id(selected_index) + 1) % (max_index + 1);
+            }
+          }
